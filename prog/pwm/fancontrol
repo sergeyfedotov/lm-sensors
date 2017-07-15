@@ -534,21 +534,38 @@ function UpdateFanSpeeds
 			echo "min_fanval=$min_fanval"
 		fi
 
-		if (( $tval <= $mint ))
-		  then pwmval=$minpwm # below min temp, use defined min pwm
-		elif (( $tval >= $maxt ))
-		  then pwmval=$maxpwm # over max temp, use defined max pwm
-		else
-		  # calculate the new value from temperature and settings
-		  pwmval="(${tval}-${mint})*(${maxpwm}-${minso})/(${maxt}-${mint})+${minso}"
-		  if [ $pwmpval -eq 0 -o $min_fanval -eq 0 ]
-		  then # if fan was stopped start it using a safe value
-		  	echo $minsa > $pwmo
-			# Sleep while still handling signals
-			sleep 1 &
-			wait
-		  fi
+		if (( $tval < $mint ))
+		then 
+			pwmval=$minso
+		elif (( $tval >= $mint ))
+		then
+			# calculate the new value from temperature and settings
+			pwmval="(${tval}-${mint})*(${maxpwm}-${minso})/(${maxt}-${mint})+${minso}"
 		fi
+
+		if [ $STATE -eq 0 ]
+		then
+			if (( $tval >= $mint ))
+			then
+				STATE=1
+				if (( $pwmval < $minsa ))
+				then 
+					pwmval=$minsa
+				fi
+			else
+				pwmval=$minpwm
+			fi
+		elif [ $STATE -eq 1 ] && (( $tval < ($mint-$HYST) ))
+		then
+			STATE=0
+			pwmval=$minpwm
+		fi
+
+		if (( $tval >= $maxt ))
+		then 
+			pwmval=$maxpwm # over max temp, use defined max pwm
+		fi
+
 		echo $pwmval > $pwmo # write new value to pwm output
 		if [ $? -ne 0 ]
 		then
@@ -578,6 +595,9 @@ do
 done
 
 echo 'Starting automatic fan control...'
+
+STATE=0
+HYST=5000
 
 # main loop calling the main function at specified intervals
 while true
